@@ -1,3 +1,4 @@
+  
 import time
 import re
 import argparse
@@ -14,48 +15,37 @@ from selenium.webdriver.common.action_chains import ActionChains
 from webdriver_manager.chrome import ChromeDriverManager
 
 
-def click_first(driver, xpaths, timeout=8):
+def click_first(driver, xpaths, timeout=5):  # Kurangi timeout
     """Klik elemen pertama yang ketemu dari daftar XPATH."""
     end = time.time() + timeout
     while time.time() < end:
         for xp in xpaths:
             try:
                 el = driver.find_element(By.XPATH, xp)
-                # Scroll ke elemen terlebih dahulu
-                driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", el)
-                time.sleep(0.3)
-                # Gunakan ActionChains untuk simulasi klik manusia
-                ActionChains(driver).move_to_element(el).pause(random.uniform(0.1, 0.3)).click().perform()
+                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", el)
+                time.sleep(0.1)
+                el.click()  # Klik langsung lebih cepat
                 return True
             except Exception:
                 pass
-        time.sleep(0.2)
+        time.sleep(0.1)
     return False
 
 
-def human_like_scroll(driver, element, pause_time=1.2):
-    """Scroll seperti manusia dengan kecepatan bervariasi dan simulasi scroll bertahap"""
-    # Dapatkan tinggi scroll saat ini dan total
-    current_scroll = driver.execute_script("return arguments[0].scrollTop;", element)
-    scroll_height = driver.execute_script("return arguments[0].scrollHeight;", element)
-    
-    # Scroll bertahap (3-5 langkah)
-    steps = random.randint(3, 5)
-    scroll_increment = (scroll_height - current_scroll) / steps
-    
-    for i in range(steps):
-        new_position = current_scroll + (scroll_increment * (i + 1))
-        driver.execute_script(f"arguments[0].scrollTop = {new_position};", element)
-        time.sleep(random.uniform(0.2, 0.4))
-    
-    # Pastikan scroll sampai bawah
+def fast_scroll(driver, element):
+    """Scroll cepat langsung ke bawah"""
     driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight;", element)
-    scroll_pause = random.uniform(pause_time * 0.8, pause_time * 1.2)
-    time.sleep(scroll_pause)
+    time.sleep(0.3)
 
 
-def random_sleep(min_sec=0.5, max_sec=2.0):
-    """Sleep dengan durasi random seperti perilaku manusia"""
+def human_like_scroll(driver, element, pause_time=0.5):  # Kurangi pause
+    """Scroll lebih cepat dengan delay minimal"""
+    driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight;", element)
+    time.sleep(pause_time)
+
+
+def random_sleep(min_sec=0.2, max_sec=0.5):
+    """Sleep dengan durasi minimal"""
     time.sleep(random.uniform(min_sec, max_sec))
 
 
@@ -84,55 +74,66 @@ def safe_attr(parent, css_list, attr):
 
 def try_handle_consent(driver):
     """Coba klik 'Setuju/Accept' bila muncul dialog consent."""
-    random_sleep(0.5, 1.5)
+    random_sleep(0.3, 0.5)
     click_first(driver, [
-        # Indonesia
         "//button//*[contains(.,'Saya setuju')]/ancestor::button",
         "//button//*[contains(.,'Setuju')]/ancestor::button",
         "//button//*[contains(.,'Terima')]/ancestor::button",
         "//button//*[contains(.,'Tolak semua')]/ancestor::button",
-        # Inggris
         "//button//*[contains(.,'I agree')]/ancestor::button",
         "//button//*[contains(.,'Accept all')]/ancestor::button",
         "//button//*[contains(.,'Accept')]/ancestor::button",
         "//button//*[contains(.,'Reject all')]/ancestor::button",
-    ], timeout=6)
+    ], timeout=4)
 
 
-def wait_for_manual_login(driver, timeout=60):
-    """Berikan waktu untuk login manual"""
+def wait_for_manual_interaction(driver, timeout=60, manual_scroll_time=30):
+    """Berikan waktu untuk login manual DAN scroll manual"""
     print("\n" + "="*60)
-    print("WAKTU LOGIN MANUAL")
+    print("FASE 1: LOGIN MANUAL")
     print("="*60)
-    print(f"Silakan login ke akun Google Anda dalam {timeout} detik")
-    print("Setelah login, biarkan browser terbuka.")
-    print("Script akan melanjutkan secara otomatis...")
+    print(f"⏰ Waktu: {timeout} detik")
+    print("📝 Silakan login ke akun Google Anda")
     print("="*60 + "\n")
     
     time.sleep(timeout)
-    print("\nMelanjutkan proses scraping...\n")
+    
+    print("\n" + "="*60)
+    print("FASE 2: SCROLL MANUAL UNTUK PRE-LOAD DATA")
+    print("="*60)
+    print(f"⏰ Waktu: {manual_scroll_time} detik")
+    print("🚀 SCROLL CEPAT-CEPAT KE BAWAH!")
+    print("💡 Tips:")
+    print("   - Scroll secepat mungkin untuk load banyak ulasan")
+    print("   - Semakin banyak scroll = semakin cepat scraping")
+    print("   - Data yang sudah ter-load akan langsung di-scrape")
+    print("="*60 + "\n")
+    
+    # Countdown timer
+    for remaining in range(manual_scroll_time, 0, -5):
+        print(f"⏳ Sisa waktu scroll manual: {remaining} detik...")
+        time.sleep(5)
+    
+    print("\n✓ Melanjutkan scraping otomatis...\n")
 
 
 def open_reviews_panel(driver, wait):
-    random_sleep(1, 2)
+    random_sleep(0.5, 1.0)
     
     # Klik tab/tombol "Ulasan"
     ok = click_first(driver, [
         "//button[contains(@aria-label,'Ulasan')]",
         "//a[contains(@aria-label,'Ulasan')]",
         "//button[.//div[contains(.,'Ulasan')]]",
-        # Inggris (cadangan)
         "//button[contains(@aria-label,'Reviews')]",
         "//a[contains(@aria-label,'Reviews')]",
         "//button[.//div[contains(.,'Reviews')]]",
-    ], timeout=15)
+    ], timeout=10)
     if not ok:
-        raise RuntimeError("Tidak menemukan tombol 'Ulasan/Reviews'. Pastikan URL adalah halaman tempat (place).")
+        raise RuntimeError("Tidak menemukan tombol 'Ulasan/Reviews'.")
 
-    # Tunggu container review muncul
-    random_sleep(1, 2)
+    random_sleep(0.5, 1.0)
     
-    # Cari feed container dengan berbagai selector
     feed_selectors = [
         "div[role='feed']",
         "div.m6QErb.DxyBCb.kA9KIf.dS8AEf",
@@ -151,32 +152,43 @@ def open_reviews_panel(driver, wait):
     if not feed:
         raise RuntimeError("Tidak menemukan container ulasan")
     
-    random_sleep(1, 2)
+    random_sleep(0.5, 1.0)
     return feed
 
 
 def sort_reviews_newest(driver):
-    """Opsional: ubah urutan ulasan ke 'Terbaru/Newest'."""
+    """Ubah urutan ulasan ke 'Terbaru/Newest'."""
+    print("\n⏳ Mengubah urutan ke 'Terbaru'...")
+    
     clicked = click_first(driver, [
         "//button[contains(@aria-label,'Urutkan')]",
         "//button[contains(@aria-label,'Sort')]",
         "//button//*[contains(.,'Urutkan')]/ancestor::button",
         "//button//*[contains(.,'Sort')]/ancestor::button",
     ], timeout=5)
+    
     if not clicked:
-        return
+        print("⚠️  Tombol 'Urutkan' tidak ditemukan")
+        return False
 
-    random_sleep(0.4, 0.8)
-    # Pilih "Terbaru" / "Newest"
-    click_first(driver, [
+    time.sleep(0.3)
+    
+    clicked_newest = click_first(driver, [
         "//*[@role='menu']//*[contains(.,'Terbaru')]/ancestor::*[@role='menuitemradio' or @role='menuitem']",
         "//*[@role='menu']//*[contains(.,'Newest')]/ancestor::*[@role='menuitemradio' or @role='menuitem']",
     ], timeout=5)
-    random_sleep(0.5, 1.0)
+    
+    if clicked_newest:
+        print("✓ Berhasil mengubah urutan ke 'Terbaru'\n")
+        time.sleep(0.5)
+        return True
+    else:
+        print("⚠️  Menu 'Terbaru' tidak ditemukan\n")
+        return False
 
 
 def expand_more_buttons(driver, container):
-    """Klik 'Lainnya/More' pada review yang sudah termuat."""
+    """Klik 'Lainnya/More' dengan cara lebih cepat"""
     xps = [
         ".//button[.//span[contains(.,'Lainnya')]]",
         ".//button[contains(@aria-label,'Lainnya')]",
@@ -188,11 +200,8 @@ def expand_more_buttons(driver, container):
             btns = container.find_elements(By.XPATH, xp)
             for b in btns:
                 try:
-                    # Scroll ke tombol terlebih dahulu
-                    driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", b)
-                    time.sleep(0.2)
-                    ActionChains(driver).move_to_element(b).pause(random.uniform(0.05, 0.15)).click().perform()
-                    time.sleep(random.uniform(0.1, 0.2))
+                    b.click()
+                    time.sleep(0.05)
                 except Exception:
                     pass
         except Exception:
@@ -200,7 +209,6 @@ def expand_more_buttons(driver, container):
 
 
 def parse_rating_from_aria(aria_label):
-    # contoh: "5,0 bintang" atau "5.0 stars"
     if not aria_label:
         return ""
     m = re.search(r"(\d+(?:[.,]\d+)?)", aria_label)
@@ -209,25 +217,20 @@ def parse_rating_from_aria(aria_label):
     return m.group(1).replace(",", ".")
 
 
-def scrape_reviews(url, chromedriver_path, max_reviews=None, headless=False, newest_first=True, scroll_pause=1.2, login_time=60):
+def scrape_reviews(url, chromedriver_path, max_reviews=None, headless=False, newest_first=True, 
+                   scroll_pause=0.3, login_time=60, manual_scroll_time=30):
     opts = Options()
     
-    # User agent untuk terlihat seperti browser biasa
     opts.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36")
-    
-    # Pengaturan bahasa dan notifikasi
     opts.add_argument("--lang=id-ID")
     opts.add_argument("--disable-notifications")
     opts.add_argument("--start-maximized")
     opts.add_argument("--no-sandbox")
     opts.add_argument("--disable-dev-shm-usage")
-    
-    # Anti-deteksi bot
     opts.add_argument("--disable-blink-features=AutomationControlled")
     opts.add_experimental_option("excludeSwitches", ["enable-automation"])
     opts.add_experimental_option('useAutomationExtension', False)
     
-    # Tambahkan preferences untuk terlihat lebih natural
     prefs = {
         "profile.default_content_setting_values.notifications": 2,
         "credentials_enable_service": False,
@@ -238,31 +241,22 @@ def scrape_reviews(url, chromedriver_path, max_reviews=None, headless=False, new
     if headless:
         opts.add_argument("--headless=new")
 
-    # Gunakan webdriver-manager untuk auto-download ChromeDriver yang sesuai
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=opts)
     
-    # Sembunyikan properti webdriver
     driver.execute_cdp_cmd('Network.setUserAgentOverride', {
         "userAgent": 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36'
     })
     driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
     
-    # Tambahkan script untuk menyembunyikan automation
     driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
         'source': '''
-            Object.defineProperty(navigator, 'webdriver', {
-                get: () => undefined
-            });
-            Object.defineProperty(navigator, 'plugins', {
-                get: () => [1, 2, 3, 4, 5]
-            });
-            Object.defineProperty(navigator, 'languages', {
-                get: () => ['id-ID', 'id', 'en-US', 'en']
-            });
+            Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+            Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+            Object.defineProperty(navigator, 'languages', {get: () => ['id-ID', 'id', 'en-US', 'en']});
         '''
     })
     
-    wait = WebDriverWait(driver, 25)
+    wait = WebDriverWait(driver, 20)
 
     data = []
     seen = set()
@@ -271,34 +265,46 @@ def scrape_reviews(url, chromedriver_path, max_reviews=None, headless=False, new
     try:
         driver.get(url)
         wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
-        random_sleep(2, 4)
+        time.sleep(1)
 
         try_handle_consent(driver)
 
-        # Berikan waktu untuk login manual
-        wait_for_manual_login(driver, login_time)
+        # Login + Manual Scroll untuk pre-load data
+        wait_for_manual_interaction(driver, login_time, manual_scroll_time)
 
         feed = open_reviews_panel(driver, wait)
 
         if newest_first:
             sort_reviews_newest(driver)
 
+        # Tambahan waktu untuk scroll manual setelah sort
+        if manual_scroll_time > 0:
+            print(f"\n WAKTU SCROLL MANUAL TAMBAHAN: {manual_scroll_time} detik")
+            print(" Scroll lagi untuk pre-load lebih banyak data!")
+            print("="*60 + "\n")
+            
+            # Countdown
+            for remaining in range(manual_scroll_time, 0, -10):
+                print(f" Sisa waktu: {remaining} detik...")
+                time.sleep(10)
+            
+            print("\n✓ Melanjutkan scraping otomatis...\n")
+
         last_count = 0
         scroll_attempts = 0
         consecutive_no_new_data = 0
-        max_consecutive_no_new_data = 15  # Tingkatkan dari 10 ke 15 untuk memastikan semua data terambil
+        max_consecutive_no_new_data = 5  # Kurangi dari 15 ke 5
 
         print("\n" + "="*60)
-        print("MEMULAI SCRAPING - MENGAMBIL SEMUA ULASAN")
+        print("MEMULAI SCRAPING OTOMATIS - MODE CEPAT")
         print("="*60)
-        print("Hanya ulasan dengan data lengkap (name, date, text) yang diambil")
-        print("Ulasan tanpa text akan diskip\n")
+        print("✓ Data lengkap (name, date, text)")
+        print("✓ Scroll otomatis minimal delay")
+        print("="*60 + "\n")
 
-        # Loop tanpa batas maksimal (sampai semua data terambil)
         while consecutive_no_new_data < max_consecutive_no_new_data:
             expand_more_buttons(driver, feed)
 
-            # Kandidat item review
             items = feed.find_elements(By.CSS_SELECTOR, "div[data-review-id]")
             if not items:
                 items = feed.find_elements(By.CSS_SELECTOR, "div[role='article']")
@@ -334,15 +340,12 @@ def scrape_reviews(url, chromedriver_path, max_reviews=None, headless=False, new
                     "span.MyEned",
                 ])
 
-                # Tandai sebagai sudah dilihat terlebih dahulu
                 seen.add(signature)
 
-                # Validasi: hanya ambil jika name, date, dan text tidak kosong
                 if not name or not date or not text:
                     skipped_count += 1
                     continue
 
-                # Data lengkap, tambahkan ke list
                 data.append({
                     "name": name,
                     "rating": rating,
@@ -351,38 +354,37 @@ def scrape_reviews(url, chromedriver_path, max_reviews=None, headless=False, new
                 })
                 current_iteration_count += 1
 
-                # Jika ada max_reviews dan sudah tercapai, break
                 if max_reviews and len(data) >= max_reviews:
                     break
 
-            # Jika sudah mencapai max_reviews, hentikan loop
             if max_reviews and len(data) >= max_reviews:
+                print(f"\n✓ Target {max_reviews} ulasan tercapai!")
                 break
 
-            # scroll ke bawah dengan gaya manusia
-            human_like_scroll(driver, feed, scroll_pause)
+            # Fast scroll
+            fast_scroll(driver, feed)
             scroll_attempts += 1
 
-            # Cek apakah ada data baru yang ditambahkan
             if len(data) == last_count:
                 consecutive_no_new_data += 1
             else:
                 consecutive_no_new_data = 0
                 last_count = len(data)
             
-            # Informasi progress yang lebih detail
-            status = f"Scroll #{scroll_attempts} | Ulasan lengkap: {len(data)}"
-            if max_reviews:
-                status += f"/{max_reviews}"
-            status += f" | Diskip: {skipped_count} | Baru ditambah: {current_iteration_count} | No new data: {consecutive_no_new_data}/{max_consecutive_no_new_data}"
-            print(status)
+            if consecutive_no_new_data >= max_consecutive_no_new_data:
+                print(f"\n✓ Tidak ada data baru setelah {consecutive_no_new_data}x scroll")
+                break
+            
+            # Progress setiap 3 scroll
+            if scroll_attempts % 3 == 0:
+                print(f"⚡ Scroll #{scroll_attempts} | Data: {len(data)} | Diskip: {skipped_count} | Baru: {current_iteration_count}")
 
         print("\n" + "="*60)
         print("SCRAPING SELESAI")
         print("="*60)
-        print(f"Total ulasan lengkap terkumpul: {len(data)}")
-        print(f"Total ulasan diskip (data tidak lengkap): {skipped_count}")
-        print(f"Total scroll dilakukan: {scroll_attempts}")
+        print(f"Total ulasan: {len(data)}")
+        print(f"Diskip (incomplete): {skipped_count}")
+        print(f"Total scroll: {scroll_attempts}")
         print("="*60 + "\n")
 
         return data
@@ -394,21 +396,23 @@ def scrape_reviews(url, chromedriver_path, max_reviews=None, headless=False, new
 
 def main():
     # ========== KONFIGURASI ==========
-    GOOGLE_MAPS_URL = "https://www.google.com/maps/place/Wisata+Kayangan+Api/@-7.2592279,111.7880422,870m/data=!3m2!1e3!4b1!4m6!3m5!1s0x2e79d548d725ad51:0xa51be7d8f76343ea!8m2!3d-7.2592332!4d111.7906171!16s%2Fg%2F1q5jblmlw?hl=id&entry=ttu&g_ep=EgoyMDI2MDEyNy4wIKXMDSoASAFQAw%3D%3D"
-    CHROMEDRIVER_PATH = None  # Tidak perlu lagi karena pakai webdriver-manager
-    MAX_REVIEWS = None  # None = ambil semua ulasan yang tersedia, atau isi angka (misal: 5000)
-    OUTPUT_FILE = "kayangan_api3.csv"
+    GOOGLE_MAPS_URL = "https://www.google.com/maps/place/Taman+Rajekwesi/@-7.1577847,111.8669561,870m/data=!3m2!1e3!4b1!4m6!3m5!1s0x2e7781f1abd639c9:0xbd04c2f9a63639b6!8m2!3d-7.15779!4d111.871827!16s%2Fg%2F11bv2l_p30?hl=id&entry=ttu&g_ep=EgoyMDI2MDEyNy4wIKXMDSoASAFQAw%3D%3D"
+    CHROMEDRIVER_PATH = None
+    MAX_REVIEWS = None  # None = ambil semua
+    OUTPUT_FILE = "taman_rajekwesi.csv"
     HEADLESS = False
     NEWEST_FIRST = True
-    LOGIN_TIME = 60  # Waktu untuk login manual (dalam detik)
+    LOGIN_TIME = 60  # Waktu login
+    MANUAL_SCROLL_TIME = 30  # Waktu scroll manual untuk pre-load
     # =================================
 
-    print(f"Memulai scraping...")
+    print(f" FAST SCRAPING MODE WITH MANUAL SCROLL")
     print(f"URL: {GOOGLE_MAPS_URL}")
+    print(f"Login: {LOGIN_TIME}s | Manual Scroll: {MANUAL_SCROLL_TIME}s x2")
     if MAX_REVIEWS:
         print(f"Target: {MAX_REVIEWS} ulasan")
     else:
-        print(f"Mode: AMBIL SEMUA ULASAN (hingga tidak ada lagi)")
+        print(f"Mode: AMBIL SEMUA ULASAN")
     
     reviews = scrape_reviews(
         url=GOOGLE_MAPS_URL,
@@ -417,22 +421,22 @@ def main():
         headless=HEADLESS,
         newest_first=NEWEST_FIRST,
         login_time=LOGIN_TIME,
+        manual_scroll_time=MANUAL_SCROLL_TIME,
     )
 
     if len(reviews) > 0:
         df = pd.DataFrame(reviews)
         df.to_csv(OUTPUT_FILE, index=False, encoding="utf-8-sig")
-        print(f"\n✓ Selesai. Tersimpan: {OUTPUT_FILE}")
-        print(f"✓ Total ulasan dengan data lengkap: {len(df)}")
+        print(f"\n✓ Tersimpan: {OUTPUT_FILE}")
+        print(f"✓ Total: {len(df)} ulasan")
         
-        # Tampilkan statistik
-        print("\nStatistik Data:")
-        print(f"- Ulasan dengan rating: {df['rating'].notna().sum()}")
-        print(f"- Ulasan tanpa rating: {df['rating'].isna().sum()}")
-        print(f"\nPreview 3 data pertama:")
+        print("\nStatistik:")
+        print(f"- Dengan rating: {df['rating'].notna().sum()}")
+        print(f"- Tanpa rating: {df['rating'].isna().sum()}")
+        print(f"\nPreview:")
         print(df.head(3).to_string())
     else:
-        print("\n✗ Tidak ada ulasan yang berhasil dikumpulkan")
+        print("\n✗ Tidak ada data terkumpul")
 
 
 if __name__ == "__main__":
