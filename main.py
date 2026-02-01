@@ -1,9 +1,11 @@
-  
 import time
 import re
 import argparse
 import pandas as pd
 import random
+import signal
+import sys
+from datetime import datetime, timedelta
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -14,8 +16,57 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.action_chains import ActionChains
 from webdriver_manager.chrome import ChromeDriverManager
 
+# Global variables untuk menyimpan data sementara
+TEMP_DATA = []
+TEMP_OUTPUT_FILE = ""
+DRIVER_INSTANCE = None
 
-def click_first(driver, xpaths, timeout=5):  # Kurangi timeout
+def save_temp_data():
+    """Simpan data sementara ke CSV saat interupsi"""
+    global TEMP_DATA, TEMP_OUTPUT_FILE, DRIVER_INSTANCE
+    
+    if len(TEMP_DATA) > 0:
+        df = pd.DataFrame(TEMP_DATA)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_file = TEMP_OUTPUT_FILE or f"backup_reviews_{timestamp}.csv"
+        df.to_csv(output_file, index=False, encoding="utf-8-sig")
+        
+        print(f"\n{'='*60}")
+        print("  PROSES DIHENTIKAN - DATA OTOMATIS TERSIMPAN")
+        print(f"{'='*60}")
+        print(f"✓ File: {output_file}")
+        print(f"✓ Total: {len(df)} ulasan")
+        print(f"\nStatistik:")
+        print(f"- Dengan rating: {df['rating'].notna().sum()}")
+        print(f"- Tanpa rating: {df['rating'].isna().sum()}")
+        print(f"{'='*60}\n")
+        return output_file
+    else:
+        print("\n  Tidak ada data yang tersimpan\n")
+        return None
+
+def signal_handler(sig, frame):
+    """Handler untuk Ctrl+C dan signal lainnya"""
+    global DRIVER_INSTANCE
+    print("\n\n  Terdeteksi interupsi (Ctrl+C)...")
+    save_temp_data()
+    
+    # Tutup browser
+    if DRIVER_INSTANCE:
+        try:
+            print("Menutup browser...")
+            DRIVER_INSTANCE.quit()
+        except:
+            pass
+    
+    sys.exit(0)
+
+# Setup signal handlers
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+
+
+def click_first(driver, xpaths, timeout=5):
     """Klik elemen pertama yang ketemu dari daftar XPATH."""
     end = time.time() + timeout
     while time.time() < end:
@@ -24,7 +75,7 @@ def click_first(driver, xpaths, timeout=5):  # Kurangi timeout
                 el = driver.find_element(By.XPATH, xp)
                 driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", el)
                 time.sleep(0.1)
-                el.click()  # Klik langsung lebih cepat
+                el.click()
                 return True
             except Exception:
                 pass
@@ -33,19 +84,19 @@ def click_first(driver, xpaths, timeout=5):  # Kurangi timeout
 
 
 def fast_scroll(driver, element):
-    """Scroll cepat langsung ke bawah"""
+    """Scroll cepat tanpa animasi"""
     driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight;", element)
     time.sleep(0.3)
 
 
-def human_like_scroll(driver, element, pause_time=0.5):  # Kurangi pause
+def human_like_scroll(driver, element, pause_time=0.5):
     """Scroll lebih cepat dengan delay minimal"""
     driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight;", element)
     time.sleep(pause_time)
 
 
 def random_sleep(min_sec=0.2, max_sec=0.5):
-    """Sleep dengan durasi minimal"""
+    """Sleep dengan durasi random minimal"""
     time.sleep(random.uniform(min_sec, max_sec))
 
 
@@ -72,6 +123,48 @@ def safe_attr(parent, css_list, attr):
     return ""
 
 
+def parse_date_to_datetime(date_str):
+    """
+    Konversi string tanggal Google Maps ke datetime object.
+    """
+    if not date_str:
+        return None
+    
+    now = datetime.now()
+    date_str_lower = date_str.lower()
+    
+    match = re.search(r'(\d+)', date_str_lower)
+    if not match:
+        return now
+    
+    num = int(match.group(1))
+    
+    if 'tahun' in date_str_lower or 'year' in date_str_lower:
+        return now - timedelta(days=num * 365)
+    elif 'bulan' in date_str_lower or 'month' in date_str_lower:
+        return now - timedelta(days=num * 30)
+    elif 'minggu' in date_str_lower or 'week' in date_str_lower:
+        return now - timedelta(weeks=num)
+    elif 'hari' in date_str_lower or 'day' in date_str_lower:
+        return now - timedelta(days=num)
+    elif 'jam' in date_str_lower or 'hour' in date_str_lower:
+        return now - timedelta(hours=num)
+    elif 'menit' in date_str_lower or 'minute' in date_str_lower:
+        return now - timedelta(minutes=num)
+    
+    return now
+
+
+def is_within_last_n_years(date_str, years=5):
+    """Cek apakah tanggal dalam rentang N tahun terakhir"""
+    date_obj = parse_date_to_datetime(date_str)
+    if not date_obj:
+        return False
+    
+    cutoff_date = datetime.now() - timedelta(days=years * 365)
+    return date_obj >= cutoff_date
+
+
 def try_handle_consent(driver):
     """Coba klik 'Setuju/Accept' bila muncul dialog consent."""
     random_sleep(0.3, 0.5)
@@ -87,40 +180,26 @@ def try_handle_consent(driver):
     ], timeout=4)
 
 
-def wait_for_manual_interaction(driver, timeout=60, manual_scroll_time=30):
-    """Berikan waktu untuk login manual DAN scroll manual"""
+def wait_for_manual_login(driver, timeout=60):
+    """Berikan waktu HANYA untuk login manual"""
     print("\n" + "="*60)
-    print("FASE 1: LOGIN MANUAL")
+    print("WAKTU LOGIN MANUAL")
     print("="*60)
-    print(f"⏰ Waktu: {timeout} detik")
-    print("📝 Silakan login ke akun Google Anda")
+    print(f" Waktu: {timeout} detik")
+    print(" Silakan:")
+    print("   1. Login ke akun Google Anda")
+    print("   2. Tunggu hingga halaman Maps terbuka penuh")
+    print("   3. Jangan tutup browser!")
+    print("\n  Tekan Ctrl+C kapan saja untuk menghentikan dan menyimpan data")
     print("="*60 + "\n")
     
     time.sleep(timeout)
-    
-    print("\n" + "="*60)
-    print("FASE 2: SCROLL MANUAL UNTUK PRE-LOAD DATA")
-    print("="*60)
-    print(f"⏰ Waktu: {manual_scroll_time} detik")
-    print("🚀 SCROLL CEPAT-CEPAT KE BAWAH!")
-    print("💡 Tips:")
-    print("   - Scroll secepat mungkin untuk load banyak ulasan")
-    print("   - Semakin banyak scroll = semakin cepat scraping")
-    print("   - Data yang sudah ter-load akan langsung di-scrape")
-    print("="*60 + "\n")
-    
-    # Countdown timer
-    for remaining in range(manual_scroll_time, 0, -5):
-        print(f"⏳ Sisa waktu scroll manual: {remaining} detik...")
-        time.sleep(5)
-    
-    print("\n✓ Melanjutkan scraping otomatis...\n")
+    print("✓ Waktu login selesai, memulai scraping...\n")
 
 
 def open_reviews_panel(driver, wait):
     random_sleep(0.5, 1.0)
     
-    # Klik tab/tombol "Ulasan"
     ok = click_first(driver, [
         "//button[contains(@aria-label,'Ulasan')]",
         "//a[contains(@aria-label,'Ulasan')]",
@@ -130,7 +209,7 @@ def open_reviews_panel(driver, wait):
         "//button[.//div[contains(.,'Reviews')]]",
     ], timeout=10)
     if not ok:
-        raise RuntimeError("Tidak menemukan tombol 'Ulasan/Reviews'.")
+        raise RuntimeError("Tidak menemukan tombol 'Ulasan/Reviews'. Pastikan URL adalah halaman tempat (place).")
 
     random_sleep(0.5, 1.0)
     
@@ -158,7 +237,7 @@ def open_reviews_panel(driver, wait):
 
 def sort_reviews_newest(driver):
     """Ubah urutan ulasan ke 'Terbaru/Newest'."""
-    print("\n⏳ Mengubah urutan ke 'Terbaru'...")
+    print(" Mengubah urutan ke 'Terbaru'...")
     
     clicked = click_first(driver, [
         "//button[contains(@aria-label,'Urutkan')]",
@@ -168,7 +247,7 @@ def sort_reviews_newest(driver):
     ], timeout=5)
     
     if not clicked:
-        print("⚠️  Tombol 'Urutkan' tidak ditemukan")
+        print("  Tombol 'Urutkan' tidak ditemukan")
         return False
 
     time.sleep(0.3)
@@ -183,7 +262,7 @@ def sort_reviews_newest(driver):
         time.sleep(0.5)
         return True
     else:
-        print("⚠️  Menu 'Terbaru' tidak ditemukan\n")
+        print("  Menu 'Terbaru' tidak ditemukan\n")
         return False
 
 
@@ -218,7 +297,9 @@ def parse_rating_from_aria(aria_label):
 
 
 def scrape_reviews(url, chromedriver_path, max_reviews=None, headless=False, newest_first=True, 
-                   scroll_pause=0.3, login_time=60, manual_scroll_time=30):
+                   scroll_pause=0.3, login_time=60, years_back=5):
+    global TEMP_DATA, DRIVER_INSTANCE
+    
     opts = Options()
     
     opts.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36")
@@ -242,6 +323,7 @@ def scrape_reviews(url, chromedriver_path, max_reviews=None, headless=False, new
         opts.add_argument("--headless=new")
 
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=opts)
+    DRIVER_INSTANCE = driver
     
     driver.execute_cdp_cmd('Network.setUserAgentOverride', {
         "userAgent": 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36'
@@ -261,6 +343,8 @@ def scrape_reviews(url, chromedriver_path, max_reviews=None, headless=False, new
     data = []
     seen = set()
     skipped_count = 0
+    skipped_old_date = 0
+    found_old_reviews_count = 0
 
     try:
         driver.get(url)
@@ -269,40 +353,32 @@ def scrape_reviews(url, chromedriver_path, max_reviews=None, headless=False, new
 
         try_handle_consent(driver)
 
-        # Login + Manual Scroll untuk pre-load data
-        wait_for_manual_interaction(driver, login_time, manual_scroll_time)
+        # HANYA login manual, TANPA scroll manual
+        wait_for_manual_login(driver, login_time)
 
         feed = open_reviews_panel(driver, wait)
 
         if newest_first:
             sort_reviews_newest(driver)
 
-        # Tambahan waktu untuk scroll manual setelah sort
-        if manual_scroll_time > 0:
-            print(f"\n WAKTU SCROLL MANUAL TAMBAHAN: {manual_scroll_time} detik")
-            print(" Scroll lagi untuk pre-load lebih banyak data!")
-            print("="*60 + "\n")
-            
-            # Countdown
-            for remaining in range(manual_scroll_time, 0, -10):
-                print(f" Sisa waktu: {remaining} detik...")
-                time.sleep(10)
-            
-            print("\n✓ Melanjutkan scraping otomatis...\n")
-
         last_count = 0
         scroll_attempts = 0
         consecutive_no_new_data = 0
-        max_consecutive_no_new_data = 5  # Kurangi dari 15 ke 5
+        max_consecutive_no_new_data = 30
+        max_old_reviews_before_stop = 30
 
         print("\n" + "="*60)
-        print("MEMULAI SCRAPING OTOMATIS - MODE CEPAT")
+        print(f"MEMULAI SCRAPING OTOMATIS - {years_back} TAHUN TERAKHIR")
         print("="*60)
-        print("✓ Data lengkap (name, date, text)")
-        print("✓ Scroll otomatis minimal delay")
+        print("✓ Mode: AUTO SCRAPING + MANUAL ASSIST")
+        print("✓ Scraping otomatis sedang berjalan")
+        print("✓ Anda BISA scroll manual untuk bantu load data")
+        print(f"✓ Filter: {years_back} tahun terakhir")
+        print("\n TIPS: Sambil proses jalan, scroll manual untuk load lebih banyak!")
+        print("  Tekan Ctrl+C untuk stop dan auto-save")
         print("="*60 + "\n")
 
-        while consecutive_no_new_data < max_consecutive_no_new_data:
+        while found_old_reviews_count < max_old_reviews_before_stop:
             expand_more_buttons(driver, feed)
 
             items = feed.find_elements(By.CSS_SELECTOR, "div[data-review-id]")
@@ -346,22 +422,35 @@ def scrape_reviews(url, chromedriver_path, max_reviews=None, headless=False, new
                     skipped_count += 1
                     continue
 
-                data.append({
+                if not is_within_last_n_years(date, years_back):
+                    skipped_old_date += 1
+                    found_old_reviews_count += 1
+                    continue
+                else:
+                    found_old_reviews_count = 0
+
+                review_data = {
                     "name": name,
                     "rating": rating,
                     "date": date,
                     "text": text,
-                })
+                }
+                data.append(review_data)
+                TEMP_DATA = data.copy()  # Update global untuk auto-save
                 current_iteration_count += 1
 
                 if max_reviews and len(data) >= max_reviews:
                     break
 
             if max_reviews and len(data) >= max_reviews:
-                print(f"\n✓ Target {max_reviews} ulasan tercapai!")
+                print(f"\n Target {max_reviews} ulasan tercapai!")
                 break
 
-            # Fast scroll
+            if found_old_reviews_count >= max_old_reviews_before_stop:
+                print(f"\n Mencapai batas {years_back} tahun ({found_old_reviews_count} ulasan lama)")
+                break
+
+            # Auto scroll otomatis
             fast_scroll(driver, feed)
             scroll_attempts += 1
 
@@ -375,68 +464,95 @@ def scrape_reviews(url, chromedriver_path, max_reviews=None, headless=False, new
                 print(f"\n✓ Tidak ada data baru setelah {consecutive_no_new_data}x scroll")
                 break
             
-            # Progress setiap 3 scroll
+            # Progress update setiap 3 scroll
             if scroll_attempts % 3 == 0:
-                print(f"⚡ Scroll #{scroll_attempts} | Data: {len(data)} | Diskip: {skipped_count} | Baru: {current_iteration_count}")
+                print(f" Scroll #{scroll_attempts} | Data: {len(data)} | Diskip: {skipped_count} | Lama: {found_old_reviews_count}/{max_old_reviews_before_stop}")
 
         print("\n" + "="*60)
         print("SCRAPING SELESAI")
         print("="*60)
-        print(f"Total ulasan: {len(data)}")
+        print(f"Total ulasan ({years_back} tahun): {len(data)}")
         print(f"Diskip (incomplete): {skipped_count}")
+        print(f"Diskip (>{years_back}thn): {skipped_old_date}")
         print(f"Total scroll: {scroll_attempts}")
         print("="*60 + "\n")
 
         return data
 
+    except KeyboardInterrupt:
+        print("\n\n  Proses dihentikan oleh user (Ctrl+C)")
+        return data
+    
+    except Exception as e:
+        print(f"\n\n Error: {e}")
+        print(" Menyimpan data yang sudah terkumpul...")
+        return data
+    
     finally:
         print("\nMenutup browser...")
-        driver.quit()
+        try:
+            driver.quit()
+            DRIVER_INSTANCE = None
+        except:
+            pass
 
 
 def main():
+    global TEMP_OUTPUT_FILE
+    
     # ========== KONFIGURASI ==========
-    GOOGLE_MAPS_URL = "https://www.google.com/maps/place/Taman+Rajekwesi/@-7.1577847,111.8669561,870m/data=!3m2!1e3!4b1!4m6!3m5!1s0x2e7781f1abd639c9:0xbd04c2f9a63639b6!8m2!3d-7.15779!4d111.871827!16s%2Fg%2F11bv2l_p30?hl=id&entry=ttu&g_ep=EgoyMDI2MDEyNy4wIKXMDSoASAFQAw%3D%3D"
+    GOOGLE_MAPS_URL = "https://maps.app.goo.gl/vGiaHGvpDLob9AkZ8"
     CHROMEDRIVER_PATH = None
-    MAX_REVIEWS = None  # None = ambil semua
-    OUTPUT_FILE = "taman_rajekwesi.csv"
+    MAX_REVIEWS = None
+    OUTPUT_FILE = "Pantai_WatuUlo.csv"
     HEADLESS = False
     NEWEST_FIRST = True
-    LOGIN_TIME = 60  # Waktu login
-    MANUAL_SCROLL_TIME = 30  # Waktu scroll manual untuk pre-load
+    LOGIN_TIME = 60  # Waktu login saja
+    YEARS_BACK = 5
     # =================================
-
-    print(f" FAST SCRAPING MODE WITH MANUAL SCROLL")
-    print(f"URL: {GOOGLE_MAPS_URL}")
-    print(f"Login: {LOGIN_TIME}s | Manual Scroll: {MANUAL_SCROLL_TIME}s x2")
-    if MAX_REVIEWS:
-        print(f"Target: {MAX_REVIEWS} ulasan")
-    else:
-        print(f"Mode: AMBIL SEMUA ULASAN")
     
-    reviews = scrape_reviews(
-        url=GOOGLE_MAPS_URL,
-        chromedriver_path=CHROMEDRIVER_PATH,
-        max_reviews=MAX_REVIEWS,
-        headless=HEADLESS,
-        newest_first=NEWEST_FIRST,
-        login_time=LOGIN_TIME,
-        manual_scroll_time=MANUAL_SCROLL_TIME,
-    )
+    TEMP_OUTPUT_FILE = OUTPUT_FILE
 
-    if len(reviews) > 0:
-        df = pd.DataFrame(reviews)
-        df.to_csv(OUTPUT_FILE, index=False, encoding="utf-8-sig")
-        print(f"\n✓ Tersimpan: {OUTPUT_FILE}")
-        print(f"✓ Total: {len(df)} ulasan")
-        
-        print("\nStatistik:")
-        print(f"- Dengan rating: {df['rating'].notna().sum()}")
-        print(f"- Tanpa rating: {df['rating'].isna().sum()}")
-        print(f"\nPreview:")
-        print(df.head(3).to_string())
-    else:
-        print("\n✗ Tidak ada data terkumpul")
+    print(f" AUTO SCRAPING + MANUAL ASSIST MODE")
+    print(f"URL: {GOOGLE_MAPS_URL}")
+    print(f"Filter: {YEARS_BACK} tahun terakhir")
+    print(f"Login time: {LOGIN_TIME}s")
+    print(f"\n Scraping otomatis akan jalan, Anda bisa bantu scroll manual!")
+    print(f"  Tekan Ctrl+C kapan saja untuk menghentikan dan auto-save")
+    print("="*60 + "\n")
+    
+    try:
+        reviews = scrape_reviews(
+            url=GOOGLE_MAPS_URL,
+            chromedriver_path=CHROMEDRIVER_PATH,
+            max_reviews=MAX_REVIEWS,
+            headless=HEADLESS,
+            newest_first=NEWEST_FIRST,
+            login_time=LOGIN_TIME,
+            years_back=YEARS_BACK,
+        )
+
+        if len(reviews) > 0:
+            df = pd.DataFrame(reviews)
+            df.to_csv(OUTPUT_FILE, index=False, encoding="utf-8-sig")
+            print(f"\n✓ Tersimpan: {OUTPUT_FILE}")
+            print(f"✓ Total: {len(df)} ulasan")
+            
+            print("\nStatistik:")
+            print(f"- Dengan rating: {df['rating'].notna().sum()}")
+            print(f"- Tanpa rating: {df['rating'].isna().sum()}")
+            print(f"\nPreview:")
+            print(df.head(3).to_string())
+        else:
+            print("\n✗ Tidak ada data terkumpul")
+    
+    except KeyboardInterrupt:
+        print("\n\n  Proses dihentikan oleh user!")
+        save_temp_data()
+    
+    except Exception as e:
+        print(f"\n\n Error tidak terduga: {e}")
+        save_temp_data()
 
 
 if __name__ == "__main__":
