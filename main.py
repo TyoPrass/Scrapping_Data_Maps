@@ -510,10 +510,10 @@ def main():
     global TEMP_OUTPUT_FILE
     
     # ========== KONFIGURASI ==========
-    GOOGLE_MAPS_URL = "https://maps.app.goo.gl/Tm4zNJ6Gk8FztkUC9"
+    GOOGLE_MAPS_URL = "https://maps.app.goo.gl/va19WsVwvZ8YH5JT9"
     CHROMEDRIVER_PATH = None
     MAX_REVIEWS = None
-    OUTPUT_FILE = "PantaiBanyuTibo.csv"
+    OUTPUT_FILE = "AirTerjunPutukTruno.csv"
     HEADLESS = False
     NEWEST_FIRST = True
     LOGIN_TIME = 30  # Waktu login saja
