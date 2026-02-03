@@ -296,10 +296,10 @@ def scrape_reviews(url, chromedriver_path, max_reviews=200, headless=False, newe
 def main():
     # ========== KONFIGURASI ==========
     # Ganti URL dan path ChromeDriver di sini
-    GOOGLE_MAPS_URL = "https://www.google.com/maps/place/Wisata+Kayangan+Api/@-7.2592279,111.7880422,870m/data=!3m2!1e3!4b1!4m6!3m5!1s0x2e79d548d725ad51:0xa51be7d8f76343ea!8m2!3d-7.2592332!4d111.7906171!16s%2Fg%2F1q5jblmlw?hl=id&entry=ttu&g_ep=EgoyMDI2MDEyNy4wIKXMDSoASAFQAw%3D%3D"
+    GOOGLE_MAPS_URL = "https://maps.app.goo.gl/kTrTr5KT2VFwY4Kp9"
     CHROMEDRIVER_PATH = None  # Tidak perlu lagi karena pakai webdriver-manager
     MAX_REVIEWS = 200
-    OUTPUT_FILE = "gmaps_reviews.csv"
+    OUTPUT_FILE = "sedudo.csv"
     HEADLESS = False
     NEWEST_FIRST = True
     # =================================

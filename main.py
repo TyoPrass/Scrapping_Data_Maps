@@ -83,10 +83,11 @@ def click_first(driver, xpaths, timeout=5):
     return False
 
 
-def fast_scroll(driver, element):
-    """Scroll cepat tanpa animasi"""
-    driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight;", element)
-    time.sleep(0.3)
+def fast_scroll(driver, element, times=2):
+    """Scroll cepat tanpa animasi - multiple scrolls sekaligus"""
+    for _ in range(times):
+        driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight;", element)
+        time.sleep(0.15)  # Delay lebih singkat per scroll
 
 
 def human_like_scroll(driver, element, pause_time=0.5):
@@ -95,7 +96,7 @@ def human_like_scroll(driver, element, pause_time=0.5):
     time.sleep(pause_time)
 
 
-def random_sleep(min_sec=0.2, max_sec=0.5):
+def random_sleep(min_sec=0.1, max_sec=0.3):
     """Sleep dengan durasi random minimal"""
     time.sleep(random.uniform(min_sec, max_sec))
 
@@ -198,7 +199,7 @@ def wait_for_manual_login(driver, timeout=60):
 
 
 def open_reviews_panel(driver, wait):
-    random_sleep(0.5, 1.0)
+    random_sleep(0.3, 0.5)
     
     ok = click_first(driver, [
         "//button[contains(@aria-label,'Ulasan')]",
@@ -211,7 +212,7 @@ def open_reviews_panel(driver, wait):
     if not ok:
         raise RuntimeError("Tidak menemukan tombol 'Ulasan/Reviews'. Pastikan URL adalah halaman tempat (place).")
 
-    random_sleep(0.5, 1.0)
+    random_sleep(0.3, 0.5)
     
     feed_selectors = [
         "div[role='feed']",
@@ -231,7 +232,7 @@ def open_reviews_panel(driver, wait):
     if not feed:
         raise RuntimeError("Tidak menemukan container ulasan")
     
-    random_sleep(0.5, 1.0)
+    random_sleep(0.3, 0.5)
     return feed
 
 
@@ -366,11 +367,13 @@ def scrape_reviews(url, chromedriver_path, max_reviews=None, headless=False, new
         consecutive_no_new_data = 0
         max_consecutive_no_new_data = 30
         max_old_reviews_before_stop = 30
+        scroll_batch_size = 3  # Scroll 3x sebelum parsing data
+        parse_every_n_scrolls = 2  # Parse data setiap 2 batch scroll
 
         print("\n" + "="*60)
         print(f"MEMULAI SCRAPING OTOMATIS - {years_back} TAHUN TERAKHIR")
         print("="*60)
-        print("✓ Mode: AUTO SCRAPING + MANUAL ASSIST")
+        print("✓ Mode: TURBO SCRAPING (Scroll 3x + Parse Batch)")
         print("✓ Scraping otomatis sedang berjalan")
         print("✓ Anda BISA scroll manual untuk bantu load data")
         print(f"✓ Filter: {years_back} tahun terakhir")
@@ -379,7 +382,17 @@ def scrape_reviews(url, chromedriver_path, max_reviews=None, headless=False, new
         print("="*60 + "\n")
 
         while found_old_reviews_count < max_old_reviews_before_stop:
+            # Scroll batch dulu (3x scroll sekaligus)
+            for _ in range(scroll_batch_size):
+                fast_scroll(driver, feed, times=2)  # 2x scroll per call = 6x total
+                scroll_attempts += 1
+            
+            # Expand buttons setelah scroll batch
             expand_more_buttons(driver, feed)
+            
+            # Parse data setiap 2 batch scroll (atau setiap ~50 data baru)
+            if scroll_attempts % parse_every_n_scrolls != 0:
+                continue
 
             items = feed.find_elements(By.CSS_SELECTOR, "div[data-review-id]")
             if not items:
@@ -450,10 +463,7 @@ def scrape_reviews(url, chromedriver_path, max_reviews=None, headless=False, new
                 print(f"\n Mencapai batas {years_back} tahun ({found_old_reviews_count} ulasan lama)")
                 break
 
-            # Auto scroll otomatis
-            fast_scroll(driver, feed)
-            scroll_attempts += 1
-
+            # Check data baru
             if len(data) == last_count:
                 consecutive_no_new_data += 1
             else:
@@ -464,9 +474,8 @@ def scrape_reviews(url, chromedriver_path, max_reviews=None, headless=False, new
                 print(f"\n✓ Tidak ada data baru setelah {consecutive_no_new_data}x scroll")
                 break
             
-            # Progress update setiap 3 scroll
-            if scroll_attempts % 3 == 0:
-                print(f" Scroll #{scroll_attempts} | Data: {len(data)} | Diskip: {skipped_count} | Lama: {found_old_reviews_count}/{max_old_reviews_before_stop}")
+            # Progress update setiap parse (lebih sering)
+            print(f" Scroll #{scroll_attempts} | Data: {len(data)} (+{current_iteration_count} baru) | Diskip: {skipped_count} | Lama: {found_old_reviews_count}/{max_old_reviews_before_stop}")
 
         print("\n" + "="*60)
         print("SCRAPING SELESAI")
@@ -501,13 +510,13 @@ def main():
     global TEMP_OUTPUT_FILE
     
     # ========== KONFIGURASI ==========
-    GOOGLE_MAPS_URL = "https://maps.app.goo.gl/vGiaHGvpDLob9AkZ8"
+    GOOGLE_MAPS_URL = "https://maps.app.goo.gl/Tm4zNJ6Gk8FztkUC9"
     CHROMEDRIVER_PATH = None
     MAX_REVIEWS = None
-    OUTPUT_FILE = "Pantai_WatuUlo.csv"
+    OUTPUT_FILE = "PantaiBanyuTibo.csv"
     HEADLESS = False
     NEWEST_FIRST = True
-    LOGIN_TIME = 60  # Waktu login saja
+    LOGIN_TIME = 30  # Waktu login saja
     YEARS_BACK = 5
     # =================================
     
